@@ -53,11 +53,15 @@ class MovingAverage(Strategy):
             plt.plot(long_ma, label=f'Long {self.long_window}-day MA', color='red')
 
         signals = self.get_signals()
-        buy_signals = data.loc[signals == 1]
-        sell_signals = data.loc[signals == -1]
 
-        plt.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal', alpha=1)
-        plt.scatter(sell_signals.index, sell_signals['Close'], marker='v', color='red', label='Sell Signal', alpha=1)
+        # Identify where the signal changes
+        signal_changes = np.insert(np.diff(signals) != 0, 0, True)  # Always include the first signal
+
+        buy_signals = data.loc[(signals == 1) & signal_changes]
+        sell_signals = data.loc[(signals == -1) & signal_changes]
+
+        plt.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal', s=150, alpha=1)
+        plt.scatter(sell_signals.index, sell_signals['Close'], marker='v', color='red', label='Sell Signal', s=200, alpha=1)
 
         plt.legend()
         plt.title('Trading Signals')
