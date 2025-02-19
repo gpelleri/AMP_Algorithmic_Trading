@@ -27,13 +27,18 @@ class MovingAverage(Strategy):
         return self.signals
 
     def generate_signals(self, data):
-        short_ma = data['Close'].rolling(window=self.short_window).mean()
-        long_ma = data['Close'].rolling(window=self.long_window).mean()
+        """
+        Generate the buy, hold and sell signals of the strategy.
+        :param data:
+        :return: Series of signal (-1,0,1) with the dates as index
+        """
+        short_ma = data.rolling(window=self.short_window).mean()
+        long_ma = data.rolling(window=self.long_window).mean()
 
         if self.mode == 'crossover':
             signals = np.where(short_ma > long_ma, 1, np.where(short_ma < long_ma, -1, 0))
         else:  # 'single' mode
-            signals = np.where(data['Close'] > short_ma, 1, np.where(data['Close'] < short_ma, -1, 0))
+            signals = np.where(data > short_ma, 1, np.where(data < short_ma, -1, 0))
 
         if self.invert_signals:
             signals *= -1
@@ -43,11 +48,14 @@ class MovingAverage(Strategy):
         return pd.Series(signals, index=data.index)
 
     def plot_signals(self, data):
-        short_ma = data['Close'].rolling(window=self.short_window).mean()
-        long_ma = data['Close'].rolling(window=self.long_window).mean() if self.mode == 'crossover' else None
+        """
+        Plots the stock price, moving average alongside the generated buy & sell signal.
+        """
+        short_ma = data.rolling(window=self.short_window).mean()
+        long_ma = data.rolling(window=self.long_window).mean() if self.mode == 'crossover' else None
 
         plt.figure(figsize=(12, 6))
-        plt.plot(data['Close'], label='Close Price', color='black')
+        plt.plot(data, label='Close Price', color='black')
         plt.plot(short_ma, label=f'Short {self.short_window}-day MA', color='blue')
         if long_ma is not None:
             plt.plot(long_ma, label=f'Long {self.long_window}-day MA', color='red')
@@ -60,8 +68,8 @@ class MovingAverage(Strategy):
         buy_signals = data.loc[(signals == 1) & signal_changes]
         sell_signals = data.loc[(signals == -1) & signal_changes]
 
-        plt.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal', s=150, alpha=1)
-        plt.scatter(sell_signals.index, sell_signals['Close'], marker='v', color='red', label='Sell Signal', s=200, alpha=1)
+        plt.scatter(buy_signals.index, buy_signals, marker='^', color='green', label='Buy Signal', s=150, alpha=1)
+        plt.scatter(sell_signals.index, sell_signals, marker='v', color='red', label='Sell Signal', s=200, alpha=1)
 
         plt.legend()
         plt.title('Trading Signals')

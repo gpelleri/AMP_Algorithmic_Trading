@@ -24,7 +24,7 @@ class Backtest:
 
         for i in range(1, len(self.data)):
             signal = signals.iloc[i]
-            price = self.data['Close'].iloc[i]
+            price = self.data.iloc[i]
 
             # Carry forward previous values
             self.portfolio.at[self.data.index[i], 'cash'] = self.portfolio.at[self.data.index[i - 1], 'cash']
@@ -62,7 +62,7 @@ class Backtest:
     def calculate_metrics(self):
         # Compute portfolio value (cash + holdings * price)
         self.portfolio['portfolio_value'] = (
-            self.portfolio['cash'] + (self.portfolio['holdings'] * self.data['Close'])
+            self.portfolio['cash'] + (self.portfolio['holdings'] * self.data)
         )
 
         returns = self.portfolio['portfolio_value'].pct_change().dropna()
