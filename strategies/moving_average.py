@@ -27,6 +27,11 @@ class MovingAverage(Strategy):
         return self.signals
 
     def generate_signals(self, data):
+        """
+        Generate the buy, hold and sell signals of the strategy.
+        :param data:
+        :return: Series of signal (-1,0,1) with the dates as index
+        """
         short_ma = data['Close'].rolling(window=self.short_window).mean()
         long_ma = data['Close'].rolling(window=self.long_window).mean()
 
@@ -43,6 +48,9 @@ class MovingAverage(Strategy):
         return pd.Series(signals, index=data.index)
 
     def plot_signals(self, data):
+        """
+        Plots the stock price, moving average alongside the generated buy & sell signal.
+        """
         short_ma = data['Close'].rolling(window=self.short_window).mean()
         long_ma = data['Close'].rolling(window=self.long_window).mean() if self.mode == 'crossover' else None
 

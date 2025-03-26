@@ -1,4 +1,5 @@
 import yfinance as yf
+import pandas as pd
 
 
 class DataHandler:
@@ -9,5 +10,9 @@ class DataHandler:
 
     def fetch_data(self):
         data = yf.download(self.ticker, start=self.start_date, end=self.end_date)
-        data = data[['Close']].dropna()
+        # deal with latest version of yfinance where data is now multi-index dataframe
+        if isinstance(data.columns, pd.MultiIndex):
+            data = data.xs(key=self.ticker, axis=1, level=1)  # Extract relevant ticker's data
+
+        data = data[['Close', 'High', 'Low']].dropna()
         return data
