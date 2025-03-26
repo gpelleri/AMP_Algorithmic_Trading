@@ -14,5 +14,5 @@ class DataHandler:
         if isinstance(data.columns, pd.MultiIndex):
             data = data.xs(key=self.ticker, axis=1, level=1)  # Extract relevant ticker's data
 
-        data = data['Close'].dropna()
+        data = data[['Close', 'High', 'Low']].dropna()
         return data
