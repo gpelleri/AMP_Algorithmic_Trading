@@ -20,9 +20,9 @@ class Backtest:
         self.trades = []
 
     def run(self):
-        signals = self.strategy.generate_signals(self.data)
+        signals = self.strategy.generate_signals(self.data).shift(1)
 
-        for i in range(1, len(self.data)):
+        for i in range(1, len(signals)):
             signal = signals.iloc[i]
             price = self.data["Close"].iloc[i]
 
