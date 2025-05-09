@@ -6,7 +6,7 @@ from strategies.strategy import Strategy
 
 
 class Backtest:
-    def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_cash=100000.0, transaction_cost=0.001):
+    def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_cash=100000.0, transaction_cost=0.01):
         self.data = data
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -20,9 +20,9 @@ class Backtest:
         self.trades = []
 
     def run(self):
-        signals = self.strategy.generate_signals(self.data)
+        signals = self.strategy.generate_signals(self.data).shift(1)
 
-        for i in range(1, len(self.data)):
+        for i in range(1, len(signals)):
             signal = signals.iloc[i]
             price = self.data["Close"].iloc[i]
 

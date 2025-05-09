@@ -47,15 +47,15 @@ class MovingAverage(Strategy):
 
         return pd.Series(signals, index=data.index)
 
-    def plot_signals(self, data):
+    def plot_signals(self, prices):
         """
         Plots the stock price, moving average alongside the generated buy & sell signal.
         """
-        short_ma = data['Close'].rolling(window=self.short_window).mean()
-        long_ma = data['Close'].rolling(window=self.long_window).mean() if self.mode == 'crossover' else None
+        short_ma = prices['Close'].rolling(window=self.short_window).mean()
+        long_ma = prices['Close'].rolling(window=self.long_window).mean() if self.mode == 'crossover' else None
 
         plt.figure(figsize=(12, 6))
-        plt.plot(data['Close'], label='Close Price', color='black')
+        plt.plot(prices['Close'], label='Close Price', color='black')
         plt.plot(short_ma, label=f'Short {self.short_window}-day MA', color='blue')
         if long_ma is not None:
             plt.plot(long_ma, label=f'Long {self.long_window}-day MA', color='red')
@@ -65,8 +65,8 @@ class MovingAverage(Strategy):
         # Identify where the signal changes
         signal_changes = np.insert(np.diff(signals) != 0, 0, True)  # Always include the first signal
 
-        buy_signals = data.loc[(signals == 1) & signal_changes]
-        sell_signals = data.loc[(signals == -1) & signal_changes]
+        buy_signals = prices.loc[(signals == 1) & signal_changes]
+        sell_signals = prices.loc[(signals == -1) & signal_changes]
 
         plt.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal', s=150, alpha=1)
         plt.scatter(sell_signals.index, sell_signals['Close'], marker='v', color='red', label='Sell Signal', s=200, alpha=1)
