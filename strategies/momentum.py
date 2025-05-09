@@ -37,15 +37,15 @@ class MomentumStrategy(Strategy):
         signals = (rsi < oversold).astype(int) - (rsi > overbought).astype(int)  # Buy: 1, Sell: -1
         return signals, rsi  # Buy: 1, Sell: -1
 
-    def plot_signals(self, data):
+    def plot_signals(self, prices):
         fig, ax1 = plt.subplots(figsize=(12, 7))  # Increased figure size for better readability
-        ax1.plot(data['Close'], label='Close Price', color='black', linewidth=2, zorder=3)
+        ax1.plot(prices['Close'], label='Close Price', color='black', linewidth=2, zorder=3)
 
         signals = self.get_signals()
         signal_changes = np.insert(np.diff(signals) != 0, 0, True)  # Always include the first signal
 
-        buy_signals = data.loc[(signals == 1) & signal_changes]
-        sell_signals = data.loc[(signals == -1) & signal_changes]
+        buy_signals = prices.loc[(signals == 1) & signal_changes]
+        sell_signals = prices.loc[(signals == -1) & signal_changes]
 
         ax1.scatter(buy_signals.index, buy_signals['Close'], marker='^', color='green', label='Buy Signal', s=80,
                     alpha=1, zorder=2)
@@ -56,7 +56,7 @@ class MomentumStrategy(Strategy):
         ax1.set_title('RSI Trading Signals')
 
         ax2 = ax1.twinx()
-        ax2.plot(data['RSI'], label='RSI', color='cornflowerblue', linestyle='solid', linewidth=1, zorder=0)
+        ax2.plot(prices['RSI'], label='RSI', color='cornflowerblue', linestyle='solid', linewidth=1, zorder=0)
         ax2.axhline(y=self.overbought, color='red', linestyle='dotted', label='Overbought')
         ax2.axhline(y=self.oversold, color='green', linestyle='dotted', label='Oversold')
         ax2.set_ylabel('RSI')
