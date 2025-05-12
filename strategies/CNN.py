@@ -1,94 +1,104 @@
 import numpy as np
 import pandas as pd
-import ta
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 from strategies.strategy import Strategy
-from ta.momentum import RSIIndicator
-from ta.trend import MACD, SMAIndicator, EMAIndicator
-from ta.volatility import BollingerBands
-
 
 class CNNStrategy(Strategy):
-    def __init__(self, window_size=20, epochs=20, batch_size=32):
+    """CNN strategy for multi-step forecasting of prices or returns"""
+
+    def __init__(self, window_size=20, n_steps_ahead=5, epochs=50, batch_size=32, target_type="price"):
         self.window_size = window_size
+        self.n_steps_ahead = n_steps_ahead
         self.epochs = epochs
         self.batch_size = batch_size
+        self.target_type = target_type  # 'price' or 'return'
         self.model = None
-        self.scaler = StandardScaler()
+        self.scaler_X = StandardScaler()
+        self.scaler_y = StandardScaler()
         self.signals = None
-
-    def get_signals(self):
-        return self.signals
 
     def compute_indicators(self, df):
         df = df.copy()
-        # Rendement cible
-        df['Return'] = df['Close'].pct_change().shift(-1)
-        
-        # Momentum
-        df['RSI'] = RSIIndicator(df['Close']).rsi()
-        df['RSI_Change'] = df['RSI'].diff()
-        df['MACD'] = MACD(df['Close']).macd_diff()
-        
-        # Tendance
-        df['SMA20'] = SMAIndicator(df['Close'], window=20).sma_indicator()
-        df['SMA50'] = SMAIndicator(df['Close'], window=50).sma_indicator()
-        df['Price_SMA20'] = df['Close'] / df['SMA20'] - 1
-        
-        # Volatilité
-        bb = BollingerBands(df['Close'])
-        df['BB_width'] = bb.bollinger_wband()
-        df['BB_position'] = (df['Close'] - bb.bollinger_lband()) / \
-                           (bb.bollinger_hband() - bb.bollinger_lband())
-        
+        if self.target_type == "price":
+            for i in range(self.n_steps_ahead):
+                df[f'Target_{i+1}'] = df['Close'].shift(-i-1)
+        elif self.target_type == "return":
+            for i in range(1, self.n_steps_ahead + 1):
+                df[f'Target_{i}'] = df['Close'].shift(-i) / df['Close'] - 1
         df.dropna(inplace=True)
         return df
 
     def generate_signals(self, df):
-        original_index = df.index  # Sauvegarder l'index original
+        original_index = df.index
         df = self.compute_indicators(df)
-        features = ['RSI', 'RSI_Change', 'MACD', 'SMA20', 'SMA50', 'Price_SMA20', 
-                   'BB_width', 'BB_position']
-        df_features = self.scaler.fit_transform(df[features])
-        X, y = self.create_dataset(df_features, df['Return'].values)
+        features = ['High', 'Low', 'Close']
 
-        # Train/test split tout en gardant l'ordre temporel
-        test_size = int(len(X) * 0.2)
-        X_train = X[:-test_size]
-        X_test = X[-test_size:]
-        y_train = y[:-test_size]
-        y_test = y[-test_size:]
+        X = self.scaler_X.fit_transform(df[features])
+        y_cols = [f'Target_{i+1}' for i in range(self.n_steps_ahead)]
+        y = df[y_cols].values
+        y = self.scaler_y.fit_transform(y)
 
-        self.model = tf.keras.models.Sequential([
-            tf.keras.layers.Conv1D(filters=64, kernel_size=3, activation='relu',
-                                   input_shape=(self.window_size, X.shape[2])),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(1)
+        # Création des séquences CNN (input shape: [samples, time_steps, features])
+        X_seq, y_seq = [], []
+        for i in range(len(X) - self.window_size - self.n_steps_ahead + 1):
+            X_seq.append(X[i:i+self.window_size])
+            y_seq.append(y[i + self.window_size - 1])
+
+        X_seq = np.array(X_seq)
+        y_seq = np.array(y_seq)
+
+        # Split
+        test_size = int(len(X_seq) * 0.2)
+        X_train, X_test = X_seq[:-test_size], X_seq[-test_size:]
+        y_train, y_test = y_seq[:-test_size], y_seq[-test_size:]
+
+        # Architecture CNN
+        self.model = tf.keras.Sequential([
+            tf.keras.layers.Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(self.window_size, len(features))),
+            tf.keras.layers.MaxPooling1D(pool_size=2),
+            tf.keras.layers.Conv1D(filters=32, kernel_size=3, activation='relu'),
+            tf.keras.layers.GlobalAveragePooling1D(),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(self.n_steps_ahead)
         ])
+
         self.model.compile(optimizer='adam', loss='mse')
-        self.model.fit(X_train, y_train, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+        self.model.fit(X_train, y_train, epochs=self.epochs, batch_size=self.batch_size,
+                       validation_split=0.2, verbose=0,
+                       callbacks=[tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)])
 
-        # Créer une série avec l'index original complet
-        signals = pd.Series(0, index=original_index)
-
-        # Faire les prédictions sur les données de test
+        # Prédiction
         y_pred = self.model.predict(X_test)
+        y_pred_inverse = self.scaler_y.inverse_transform(y_pred)
+        y_test_inverse = self.scaler_y.inverse_transform(y_test)
 
-        # Convertir les prédictions en signaux (-1, 0, 1)
-        test_signals = (y_pred.flatten() > 0).astype(int) - (y_pred.flatten() < 0).astype(int)
+        self.y_pred = y_pred_inverse
+        self.y_test = y_test_inverse
 
-        # Nous devons ajuster l'indice pour tenir compte de la fenêtre glissante
+        # Moyenne des prédictions futures
+        future_mean_pred = y_pred_inverse.mean(axis=1)
+        n_predictions = len(future_mean_pred)
+
+        if self.target_type == "price":
+            reference = y_test_inverse[:, 0]
+        else:
+            reference = np.zeros(n_predictions)
+
+        # Alignement
+        min_len = min(len(future_mean_pred), len(reference))
+        future_mean_pred = future_mean_pred[-min_len:]
+        reference = reference[-min_len:]
+
+        # Signaux
+        test_signals = np.zeros(min_len)
+        test_signals[future_mean_pred > reference] = 1
+        test_signals[future_mean_pred < reference] = -1
+
+        signals = pd.Series(0, index=original_index)
         test_start_idx = len(original_index) - len(test_signals)
         signals.iloc[test_start_idx:] = test_signals
 
         self.signals = signals
         return signals
-
-    def create_dataset(self, X_data, y_data):
-        X_seq, y_seq = [], []
-        for i in range(self.window_size, len(X_data)):
-            X_seq.append(X_data[i - self.window_size:i])
-            y_seq.append(y_data[i])
-        return np.array(X_seq), np.array(y_seq)

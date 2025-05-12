@@ -3,16 +3,18 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 from strategies.strategy import Strategy
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Input, Conv1D, BatchNormalization, LSTM, Dropout, Dense
 
-class LSTMStrategy(Strategy):
-    """LSTM strategy for multi-step forecasting of prices or returns"""
+class CNNRNNStrategy(Strategy):
+    """CNN + RNN strategy for multi-step forecasting of prices or returns"""
 
     def __init__(self, window_size=20, n_steps_ahead=5, epochs=50, batch_size=32, target_type="price"):
         self.window_size = window_size
         self.n_steps_ahead = n_steps_ahead
         self.epochs = epochs
         self.batch_size = batch_size
-        self.target_type = target_type  # "price" or "return"
+        self.target_type = target_type  # 'price' or 'return'
         self.model = None
         self.scaler_X = StandardScaler()
         self.scaler_y = StandardScaler()
@@ -40,26 +42,30 @@ class LSTMStrategy(Strategy):
         y = df[y_cols].values
         y = self.scaler_y.fit_transform(y)
 
-        # Séquences
+        # Création des séquences
         X_seq, y_seq = [], []
         for i in range(len(X) - self.window_size - self.n_steps_ahead + 1):
-            X_seq.append(X[i:i+self.window_size])
+            X_seq.append(X[i:i + self.window_size])
             y_seq.append(y[i + self.window_size - 1])
 
-        X_seq, y_seq = np.array(X_seq), np.array(y_seq)
+        X_seq = np.array(X_seq)
+        y_seq = np.array(y_seq)
 
         # Split
         test_size = int(len(X_seq) * 0.2)
         X_train, X_test = X_seq[:-test_size], X_seq[-test_size:]
         y_train, y_test = y_seq[:-test_size], y_seq[-test_size:]
 
-        # Modèle LSTM
-        self.model = tf.keras.Sequential([
-            tf.keras.layers.LSTM(128, return_sequences=True, input_shape=(self.window_size, len(features))),
-            tf.keras.layers.Dropout(0.1),
-            tf.keras.layers.LSTM(64),
-            tf.keras.layers.Dropout(0.1),
-            tf.keras.layers.Dense(self.n_steps_ahead)
+        # 🧠 Architecture CNN + LSTM
+        self.model = Sequential([
+            Input(shape=(self.window_size, X_seq.shape[2])),
+            Conv1D(filters=64, kernel_size=3, activation='relu'),
+            BatchNormalization(),
+            Conv1D(filters=32, kernel_size=3, activation='relu'),
+            BatchNormalization(),
+            LSTM(64, return_sequences=False),
+            Dropout(0.2),
+            Dense(self.n_steps_ahead)
         ])
 
         self.model.compile(optimizer='adam', loss='mse')
@@ -67,7 +73,7 @@ class LSTMStrategy(Strategy):
                        validation_split=0.2, verbose=0,
                        callbacks=[tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)])
 
-        # Prédiction
+        # Prédictions
         y_pred = self.model.predict(X_test)
         y_pred_inverse = self.scaler_y.inverse_transform(y_pred)
         y_test_inverse = self.scaler_y.inverse_transform(y_test)
@@ -75,27 +81,18 @@ class LSTMStrategy(Strategy):
         self.y_pred = y_pred_inverse
         self.y_test = y_test_inverse
 
-        # Moyenne des prédictions
+        # Génération des signaux
         future_mean_pred = y_pred_inverse.mean(axis=1)
-        n_predictions = len(future_mean_pred)
+        reference = y_test_inverse[:, 0] if self.target_type == "price" else np.zeros_like(future_mean_pred)
 
-        if self.target_type == "price":
-            last_real_price = y_test_inverse[:, 0]
-            reference = last_real_price
-        else:  # returns
-            reference = np.zeros(n_predictions)
-
-        # Alignement des longueurs si nécessaire
         min_len = min(len(future_mean_pred), len(reference))
         future_mean_pred = future_mean_pred[-min_len:]
         reference = reference[-min_len:]
 
-        # Signaux
         test_signals = np.zeros(min_len)
         test_signals[future_mean_pred > reference] = 1
         test_signals[future_mean_pred < reference] = -1
 
-        # Série finale
         signals = pd.Series(0, index=original_index)
         test_start_idx = len(original_index) - len(test_signals)
         signals.iloc[test_start_idx:] = test_signals
