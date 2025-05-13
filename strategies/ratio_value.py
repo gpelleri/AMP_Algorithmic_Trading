@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 from strategies.strategy import Strategy
 
 
-class PriceToBookStrategy(Strategy):
+class RatioValueStrategy(Strategy):
     """
-    A trading strategy based on Price-to-Book (P/B) ratio.
-    Generates signals based on statistical bands around the rolling mean of P/B ratio.
+    A trading strategy based on value ratio (P/E, P/B etc).
+    Generates signals based on statistical bands around the rolling mean of the ratio.
     """
 
     FREQ_MAPPING = {
@@ -17,7 +17,7 @@ class PriceToBookStrategy(Strategy):
         'yearly': 'Y',  # Yearly data, last day of year
     }
 
-    def __init__(self, pb_series, window: int = 5, k: float = 0.5, frequency: str = 'weekly'):
+    def __init__(self, ratio_series, ratio, window: int = 5, k: float = 0.5, frequency: str = 'weekly', ):
         """
         Initialize the strategy with parameters.
 
@@ -30,8 +30,12 @@ class PriceToBookStrategy(Strategy):
         if frequency not in self.FREQ_MAPPING:
             raise ValueError(f"frequency must be one of {list(self.FREQ_MAPPING.keys())}")
 
-        self.pb_series = pb_series
+        if ratio not in ["PB", "PE"]:
+            raise ValueError("Implemented Ratio are PB and PE. Do not put any / or space in the ratio name.")
+
+        self.ratio_series = ratio_series
         self.frequency = frequency
+        self.ratio = ratio+"_Ratio"
         self.window = window
         self.k = k
         self.signals = None
@@ -54,7 +58,7 @@ class PriceToBookStrategy(Strategy):
 
     def generate_signals(self, data: pd.DataFrame) -> pd.Series:
         """
-        Generate trading signals based on P/B ratio.
+        Generate trading signals based on ratio.
 
         Args:
             data: DataFrame containing 'Close' and 'PB_Ratio' columns.
@@ -64,12 +68,12 @@ class PriceToBookStrategy(Strategy):
             Series of trading signals (-1, 0, 1)
         """
         # Resample the input data
-        resampled_pb = self._resample_data(self.pb_series)
-        pb_series = resampled_pb['PB_Ratio']
+        resampled_pb = self._resample_data(self.ratio_series)
+        ratio_series = resampled_pb[self.ratio]
 
         # Calculate rolling statistics
-        rolling_mean = pb_series.rolling(window=self.window).mean()
-        rolling_std = pb_series.rolling(window=self.window).std()
+        rolling_mean = ratio_series.rolling(window=self.window).mean()
+        rolling_std = ratio_series.rolling(window=self.window).std()
 
         # Fill missing values using forward-fill and backward-fill (no look-ahead)
         rolling_mean_filled = rolling_mean.ffill().bfill()
@@ -80,9 +84,9 @@ class PriceToBookStrategy(Strategy):
         lower_band = rolling_mean_filled - self.k * rolling_std_filled
 
         # Generate low-frequency signals (e.g., weekly/monthly)
-        low_freq_signals = pd.Series(0, index=pb_series.index)
-        low_freq_signals[pb_series < lower_band] = 1
-        low_freq_signals[pb_series > upper_band] = -1
+        low_freq_signals = pd.Series(0, index=ratio_series.index)
+        low_freq_signals[ratio_series < lower_band] = 1
+        low_freq_signals[ratio_series > upper_band] = -1
 
         # Align to daily frequency
         daily_signals = pd.Series(0, index=data.index)
@@ -110,11 +114,11 @@ class PriceToBookStrategy(Strategy):
         # Create single plot
         fig, ax = plt.subplots(figsize=(14, 8))
 
-        # Use the resampled P/B data
-        resampled_pb = self._resample_data(self.pb_series)
+        # Use the resampled  data
+        resampled = self._resample_data(self.ratio_series)
 
-        ax.plot(resampled_pb.index, resampled_pb['PB_Ratio'],
-                label='P/B Ratio', color='black', alpha=0.6)
+        ax.plot(resampled.index, resampled[self.ratio],
+                label=f'{self.ratio}', color='black', alpha=0.6)
         ax.plot(self.rolling_mean.index, self.rolling_mean,
                 label='Rolling Mean', linestyle='--')
         ax.plot(self.upper_band.index, self.upper_band,
@@ -122,23 +126,25 @@ class PriceToBookStrategy(Strategy):
         ax.plot(self.lower_band.index, self.lower_band,
                 label='Lower Band', linestyle=':')
 
-        # For the P/B plot, filter signals to match resampled frequency
-        resampled_signals = self.signals.reindex(resampled_pb.index)
-        buy_signals_pb = resampled_signals[resampled_signals == 1]
-        sell_signals_pb = resampled_signals[resampled_signals == -1]
+        # For the ratio plot, filter signals to match resampled frequency
+        resampled_signals = self.signals.reindex(resampled.index)
+        buy_signals = resampled_signals[resampled_signals == 1]
+        sell_signals = resampled_signals[resampled_signals == -1]
 
-        if not buy_signals_pb.empty:
-            ax.scatter(buy_signals_pb.index, resampled_pb.loc[buy_signals_pb.index, 'PB_Ratio'],
+        if not buy_signals.empty:
+            ax.scatter(buy_signals.index, resampled.loc[buy_signals.index, self.ratio],
                        label='Buy Signal', marker='^', color='green', s=100)
-        if not sell_signals_pb.empty:
-            ax.scatter(sell_signals_pb.index, resampled_pb.loc[sell_signals_pb.index, 'PB_Ratio'],
+        if not sell_signals.empty:
+            ax.scatter(sell_signals.index, resampled.loc[sell_signals.index, self.ratio],
                        label='Sell Signal', marker='v', color='red', s=100)
 
-        ax.set_title(f'P/B Ratio with Bands ({self.frequency} Frequency)')
-        ax.set_ylabel('P/B Ratio')
+        ax.set_title(f'{self.ratio}with Bands ({self.frequency} Frequency)')
+        ax.set_ylabel(f'{self.ratio}')
         ax.set_xlabel('Date')
         ax.legend()
         ax.grid(True)
 
         plt.tight_layout()
         plt.show()
+
+
