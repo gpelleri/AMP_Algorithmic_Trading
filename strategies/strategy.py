@@ -13,6 +13,6 @@ class Strategy:
     def generate_random_signals(self, data):
         return pd.Series(np.random.choice([-1, 0, 1], size=len(data)), index=data.index)
 
-    def plot_signals(self, data):
+    def plot_signals(self, prices):
         raise NotImplementedError("Subclasses must implement plot_signals method")
 

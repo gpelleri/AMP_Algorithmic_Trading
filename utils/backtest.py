@@ -6,7 +6,7 @@ from strategies.strategy import Strategy
 
 
 class Backtest:
-    def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_cash=100000.0, transaction_cost=0.001):
+    def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_cash=100000.0, transaction_cost=0.01):
         self.data = data
         self.strategy = strategy
         self.initial_cash = initial_cash
