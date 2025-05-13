@@ -42,3 +42,29 @@ class DataHandler:
         pb_series = pb_series.loc[self.start_date:self.end_date]
 
         return pb_series
+
+    def fetch_pe_series(self, pe_file_path, sheet_name="PE_ratio_hist"):
+        """
+        Loads historical Price-to-Earnings ratio from Excel and returns it as a time series.
+        The Excel file must have a 'Dates' column and P/E ratio columns named like 'XXX UN Equity'.
+        """
+        xls = pd.ExcelFile(pe_file_path)
+        df_pe = pd.read_excel(xls, sheet_name=sheet_name)
+
+        # Parse and set datetime index
+        df_pe['Dates'] = pd.to_datetime(df_pe['Dates'], errors='coerce')
+        df_pe.set_index('Dates', inplace=True)
+
+        # Normalize column names: strip suffixes like ' UN Equity' to get ticker
+        renamed_columns = {
+            col: col.split()[0] for col in df_pe.columns if isinstance(col, str)
+        }
+        df_pe.rename(columns=renamed_columns, inplace=True)
+
+        if self.ticker not in df_pe.columns:
+            raise ValueError(f"Ticker '{self.ticker}' not found in the P/E file. Available: {list(df_pe.columns)}")
+
+        pe_series = df_pe[[self.ticker]].dropna().rename(columns={self.ticker: 'PE_Ratio'})
+        pe_series = pe_series.loc[self.start_date:self.end_date]
+
+        return pe_series
