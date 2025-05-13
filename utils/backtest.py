@@ -10,7 +10,8 @@ class Backtest:
                  benchmark_data: pd.DataFrame = None,
                  initial_cash=100000.0,
                  transaction_cost=0.01,
-                 risk_free_rate=0.0):
+                 risk_free_rate=0.0,
+                 plot_results=True):
         self.data = data
         self.strategy = strategy
         self.benchmark_data = benchmark_data
@@ -22,6 +23,7 @@ class Backtest:
         self.portfolio['cash'] = initial_cash
         self.portfolio['holdings'] = 0
         self.trades = []
+        self.plot = plot_results
 
     def run(self):
         signals = self.strategy.generate_signals(self.data).shift(1)
@@ -94,7 +96,8 @@ class Backtest:
                 'Benchmark Max Drawdown': benchmark_drawdown
             }
 
-        self.visualize_results()
+        if self.plot:
+            self.visualize_results()
 
         return {
             'Final Value': self.portfolio['portfolio_value'].iloc[-1],
