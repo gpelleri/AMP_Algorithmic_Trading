@@ -86,3 +86,6 @@ class Backtest:
         plt.xlabel('Date')
         plt.ylabel('Portfolio Value')
         plt.show()
+
+
+
