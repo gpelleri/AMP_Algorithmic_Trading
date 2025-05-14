@@ -107,6 +107,9 @@ class Backtest:
             **benchmark_metrics
         }
 
+    def get_portfolio_value_series(self):
+        return self.portfolio['portfolio_value']
+
     def visualize_results(self):
         plt.figure(figsize=(12, 6))
         plt.plot(self.portfolio['portfolio_value'], label='Strategy Portfolio', color='blue')

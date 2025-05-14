@@ -71,6 +71,10 @@ class SimpleRNNStrategy(Strategy):
     def generate_prediction(self, X_new):
         return self.model.predict(X_new, verbose=0)
 
+    def fit(self, data):
+        X, y = self.prepare_data(data)
+        self.cross_validate_and_train(X, y)
+
     def generate_signals(self, data):
         X, y = self.prepare_data(data)
         if self.model is None:
