@@ -24,6 +24,22 @@ class LSTMStrategy(Strategy):
         self.signals = None
         self.predictions = None
         self.cv_scores = []
+        self.trained = False
+
+    def fit(self, data):
+        close_prices = data['Close'].values.reshape(-1, 1)
+
+        if self.predict_returns:
+            returns = np.diff(close_prices, axis=0) / close_prices[:-1]
+            close_prices = returns.reshape(-1, 1)
+
+        # Fit scalers
+        self.scaler_X.fit(close_prices)
+        self.scaler_y.fit(close_prices)
+
+        X, y = self.prepare_data(data)
+        self.cross_validate_and_train(X, y)
+        self.trained = True
 
     def prepare_data(self, data):
         close_prices = data['Close'].values.reshape(-1, 1)
@@ -75,10 +91,57 @@ class LSTMStrategy(Strategy):
         self.model = self.build_model()
         self.model.fit(X, y, epochs=self.epochs, batch_size=32, verbose=0)
 
-    def generate_prediction(self, X_new):
-        return self.model.predict(X_new, verbose=0)
+    def generate_prediction(self, data):
+        close_prices = data['Close'].values.reshape(-1, 1)
+
+        if self.predict_returns:
+            returns = np.diff(close_prices, axis=0) / close_prices[:-1]
+            close_prices = returns.reshape(-1, 1)
+
+        scaled_prices = self.scaler_X.transform(close_prices)
+
+        X = []
+        for i in range(len(scaled_prices) - self.lookback - self.n_days + 1):
+            X.append(scaled_prices[i:(i + self.lookback)])
+        X = np.array(X)
+
+        preds = self.model.predict(X, verbose=0)
+        preds = self.scaler_X.inverse_transform(preds)
+        return preds
 
     def generate_signals(self, data):
+        if not self.trained:
+            self.fit(data)
+        else:
+            close_prices = data['Close'].values.reshape(-1, 1)
+            self.scaler_X.fit(close_prices)
+            self.scaler_y.fit(close_prices)
+
+        preds = self.generate_prediction(data)
+
+        if self.predict_returns:
+            base_index_start = self.lookback - 1
+            base_index_end = base_index_start + len(preds)
+            last_known = data['Close'].values[base_index_start:base_index_end].reshape(-1, 1)
+            future_prices = last_known * np.prod(1 + preds, axis=1).reshape(-1, 1)
+        else:
+            future_prices = preds.mean(axis=1).reshape(-1, 1)
+
+        # Align prediction index properly
+        prediction_index = data.index[
+                           self.lookback + self.n_days - 1:self.lookback + self.n_days - 1 + len(future_prices)]
+
+        actual_prices = data['Close'].loc[prediction_index]
+        pred_series = pd.Series(future_prices.flatten(), index=prediction_index)
+
+        signals = pd.Series(0, index=data.index)
+        signals[prediction_index] = np.where(pred_series > actual_prices, 1, -1).flatten()
+
+        self.predictions = pred_series
+        self.signals = signals
+        return signals
+
+    def generate_signals_old(self, data):
         X, y = self.prepare_data(data)
 
         if self.model is None:
